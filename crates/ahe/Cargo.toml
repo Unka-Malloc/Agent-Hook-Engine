@@ -1,0 +1,15 @@
+[package]
+name = "ahe"
+description = "Agent Hook Engine — one hook DSL evaluated by a common runtime and lowered onto every agent harness's native hook surface."
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/Unka-Malloc/Agent-Hook-Engine"
+keywords = ["agent", "hooks", "dsl", "lifecycle", "cli"]
+categories = ["command-line-utilities", "parser-implementations"]
+
+[dependencies]
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

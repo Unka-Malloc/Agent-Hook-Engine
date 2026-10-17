@@ -1,0 +1,76 @@
+{
+  "name": "memory-distill",
+  "handlers": [
+    {
+      "on": "stop",
+      "steps": [
+        {
+          "op": "when",
+          "cond": {
+            "op": "not",
+            "arg": {"op": "payload", "path": "stop_hook_active"}
+          },
+          "then": [
+            {
+              "op": "when",
+              "cond": {
+                "op": "and",
+                "args": [
+                  {
+                    "op": "ne",
+                    "a": {"op": "payload", "path": "prompt_id"},
+                    "b": {"op": "lit", "v": null}
+                  },
+                  {
+                    "op": "ne",
+                    "a": {"op": "payload", "path": "prompt_id"},
+                    "b": {"op": "checkpoint", "key": "last_distilled_prompt"}
+                  }
+                ]
+              },
+              "then": [
+                {
+                  "op": "checkpoint_set",
+                  "key": "last_distilled_prompt",
+                  "value": {"op": "payload", "path": "prompt_id"}
+                },
+                {
+                  "op": "block",
+                  "reason": "[记忆蒸馏·增量] 本会话有新用户输入。按 memory-distill 契约：读 inbox 中本会话已有候选去重，只追加自上次蒸馏以来新出现的用户规则/决策/设计；没有新增内容就不写文件。只写 inbox，禁止把 agent 推断当作用户观点。写完后正常结束。"
+                }
+              ]
+            },
+            {
+              "op": "when",
+              "cond": {
+                "op": "and",
+                "args": [
+                  {
+                    "op": "eq",
+                    "a": {"op": "payload", "path": "prompt_id"},
+                    "b": {"op": "lit", "v": null}
+                  },
+                  {
+                    "op": "not",
+                    "arg": {"op": "checkpoint", "key": "session_distilled"}
+                  }
+                ]
+              },
+              "then": [
+                {
+                  "op": "checkpoint_set",
+                  "key": "session_distilled",
+                  "value": {"op": "lit", "v": true}
+                },
+                {
+                  "op": "block",
+                  "reason": "[记忆蒸馏·会话结束前最后一步] 本会话即将结束。按 memory-distill 契约，把本会话中用户本人表达的、长期有效的规则/决策/设计蒸馏为候选条目写入 inbox；没有值得沉淀的内容写单行 {\"noop\":true}。只写 inbox，禁止把 agent 推断当作用户观点。写完后正常结束。"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
