@@ -24,20 +24,21 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 
 # 事件 -> [(命令, 子进程超时秒)]。命令按 argv 解析，不走 shell。
+# 路径为脱敏占位：<hooks-bin>/<agent-hooks>/<mem-bin> 是各脚本在本机的安装目录。
 REGISTRY = {
     "SessionStart": [
-        ("python3 <home>/DevSpace/Unka-Malloc/anti-rot/bin/anti-rot-hook.py", 80),
-        ("python3 <home>/.local/share/agent-hooks/universal-memory-router.py", 10),
+        ("python3 <hooks-bin>/anti-rot-hook.py", 80),
+        ("python3 <agent-hooks>/universal-memory-router.py", 10),
     ],
     "PostToolUse": [
-        ("python3 <home>/DevSpace/Unka-Malloc/anti-rot/bin/anti-rot-hook.py", 80),
+        ("python3 <hooks-bin>/anti-rot-hook.py", 80),
     ],
     "Stop": [
-        ("python3 <home>/DevSpace/Unka-Malloc/anti-rot/bin/anti-rot-hook.py", 80),
-        ("/opt/homebrew/bin/python3 <home>/.agent-memory/bin/distill-hook.py devin", 80),
+        ("python3 <hooks-bin>/anti-rot-hook.py", 80),
+        ("python3 <mem-bin>/distill-hook.py devin", 80),
     ],
     "SessionEnd": [
-        ("python3 <home>/DevSpace/Unka-Malloc/anti-rot/bin/anti-rot-hook.py", 80),
+        ("python3 <hooks-bin>/anti-rot-hook.py", 80),
     ],
 }
 

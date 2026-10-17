@@ -12,9 +12,9 @@ hooks. The design axioms and the complete formal specification (EBNF grammar,
 typing rules, big-step semantics, and proofs) live in
 [`docs/dsl-design.md`](docs/dsl-design.md).
 
-AHE is intended to become the hook capability of Adapter-For-All-Agents
-(A4AA); it is developed standalone first so the DSL and the harness mapping
-can settle before being absorbed.
+AHE is developed standalone so the DSL and the harness mapping can settle;
+it is designed to be embedded as the hook capability of a larger agent
+adapter.
 
 ## Crate layout
 

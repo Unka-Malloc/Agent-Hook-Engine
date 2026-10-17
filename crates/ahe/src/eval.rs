@@ -14,8 +14,9 @@ use std::io::{Read, Seek, Write};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-/// Per-session mutable state — the `Σ` of the spec.
-#[derive(Debug, Default)]
+/// Per-session mutable state — the `Σ` of the spec. Serializes directly;
+/// adding a field keeps persistence in sync automatically.
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct State {
     pub checkpoints: BTreeMap<String, Value>,
     pub counters: BTreeMap<String, i64>,
@@ -251,9 +252,9 @@ pub fn eval(e: &Expr, p: &Value, s: &State, v: &mut Vec<String>) -> Value {
                 let size = f.metadata().ok()?.len();
                 f.seek(std::io::SeekFrom::End(-(size.min(bytes.as_u64()?) as i64)))
                     .ok()?;
-                let mut buf = String::new();
-                f.read_to_string(&mut buf).ok()?;
-                Some(buf)
+                let mut buf = Vec::new();
+                f.read_to_end(&mut buf).ok()?;
+                Some(String::from_utf8_lossy(&buf).into_owned())
             };
             Value::from(read().unwrap_or_default())
         }

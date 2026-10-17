@@ -31,7 +31,7 @@ pub struct Handler {
     pub steps: Vec<Step>,
 }
 
-/// One primitive step. Action steps map to [`crate::HookAction`] kinds;
+/// One primitive step. Action steps map to [`crate::ActionKind`] kinds;
 /// state and control steps are engine-internal primitives.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
@@ -282,7 +282,8 @@ pub enum Expr {
     FileSize {
         path: Box<Expr>,
     },
-    /// Extract the first `{…}` JSON object from a string and parse it.
+    /// Extract the outermost `{…}` span from a string and parse it
+    /// (greedy — intended for a single JSON object embedded in prose).
     JsonExtract {
         on: Box<Expr>,
     },

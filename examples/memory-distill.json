@@ -7,8 +7,47 @@
         {
           "op": "when",
           "cond": {
-            "op": "not",
-            "arg": {"op": "payload", "path": "stop_hook_active"}
+            "op": "and",
+            "args": [
+              {
+                "op": "not",
+                "arg": {"op": "payload", "path": "stop_hook_active"}
+              },
+              {
+                "op": "or",
+                "args": [
+                  {
+                    "op": "lt",
+                    "a": {
+                      "op": "file_size",
+                      "path": {
+                        "op": "first",
+                        "args": [
+                          {"op": "payload", "path": "transcript_path"},
+                          {"op": "payload", "path": "transcript"}
+                        ]
+                      }
+                    },
+                    "b": {"op": "lit", "v": 1}
+                  },
+                  {
+                    "op": "contains",
+                    "a": {
+                      "op": "file_tail",
+                      "path": {
+                        "op": "first",
+                        "args": [
+                          {"op": "payload", "path": "transcript_path"},
+                          {"op": "payload", "path": "transcript"}
+                        ]
+                      },
+                      "bytes": {"op": "lit", "v": 2000000}
+                    },
+                    "b": {"op": "lit", "v": "\"user\""}
+                  }
+                ]
+              }
+            ]
           },
           "then": [
             {

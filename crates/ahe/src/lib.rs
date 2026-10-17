@@ -63,7 +63,7 @@ pub enum HookEvent {
     PostAgentResponse,
 }
 
-/// The kind of a [`HookAction`] — used as the capability-matrix key, since the
+/// The kind of an action step — the capability-matrix key, since the
 /// action payload differs per program but support is declared per kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -78,58 +78,6 @@ pub enum ActionKind {
     Checkpoint,
     Counter,
     Followup,
-}
-
-/// Actions a hook may ask the host to perform — the output side of the DSL.
-/// Harnesses that cannot express an action report its kind unsupported.
-#[derive(Debug, Clone, PartialEq)]
-pub enum HookAction {
-    /// Inject text into the agent's context (additionalContext family).
-    InjectContext(String),
-    /// Refuse the pending action; `reason` is shown to the agent.
-    Block { reason: String },
-    /// Explicitly allow (PermissionRequest).
-    Approve,
-    /// Transparently rewrite a tool call's input before it runs.
-    RewriteInput(serde_json::Value),
-    /// Detached side-effect process (scan, ingest).
-    Spawn { argv: Vec<String> },
-    /// Bounded child hook whose stdout contract merges back into this run.
-    Run {
-        argv: Vec<String>,
-        timeout_ms: Option<u64>,
-    },
-    /// Append a JSONL record to a named sink.
-    Journal {
-        sink: String,
-        fields: serde_json::Map<String, serde_json::Value>,
-    },
-    /// Durable keyed marker (per-prompt dedup etc.).
-    Checkpoint {
-        key: String,
-        value: serde_json::Value,
-    },
-    /// Per-session counter mutation.
-    Counter { name: String, delta: i64 },
-    /// Ask the running agent to perform a follow-up instruction.
-    Followup(String),
-}
-
-impl HookAction {
-    pub fn kind(&self) -> ActionKind {
-        match self {
-            Self::InjectContext(_) => ActionKind::InjectContext,
-            Self::Block { .. } => ActionKind::Block,
-            Self::Approve => ActionKind::Approve,
-            Self::RewriteInput(_) => ActionKind::RewriteInput,
-            Self::Spawn { .. } => ActionKind::Spawn,
-            Self::Run { .. } => ActionKind::Run,
-            Self::Journal { .. } => ActionKind::Journal,
-            Self::Checkpoint { .. } => ActionKind::Checkpoint,
-            Self::Counter { .. } => ActionKind::Counter,
-            Self::Followup(_) => ActionKind::Followup,
-        }
-    }
 }
 
 /// Whether a harness can express an event or action. `Unsupported` and
@@ -147,19 +95,21 @@ pub enum Support {
     Unknown,
 }
 
-/// A harness's hook surface, expressed in the shared vocabulary.
-pub trait HarnessHooks {
-    fn event_support(&self, event: HookEvent) -> Support;
-    fn action_support(&self, kind: ActionKind) -> Support;
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn turn_level_and_lifecycle_events_stay_distinct() {
-        // Conflating them once produced first-turn-only distills.
-        assert_ne!(HookEvent::Stop, HookEvent::SessionEnd);
+        // Conflating them once produced first-turn-only distills — pin the
+        // wire names, not just enum identity.
+        assert_eq!(
+            serde_json::from_str::<HookEvent>("\"stop\"").unwrap(),
+            HookEvent::Stop
+        );
+        assert_eq!(
+            serde_json::from_str::<HookEvent>("\"session_end\"").unwrap(),
+            HookEvent::SessionEnd
+        );
     }
 }

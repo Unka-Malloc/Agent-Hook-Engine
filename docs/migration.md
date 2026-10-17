@@ -28,9 +28,8 @@ compile into it.
   hookSpecificOutput) chosen by payload sniffing.
 - Becomes: `on session_start: inject <text>`; contract selection moves to the
   emit layer — the DSL never payload-sniffs.
-- Status: expressible today (`inject` + `emit` cover every shape the router
-  emits); the router's prompt texts still live in the Python file pending a
-  program file.
+- Status: **landed** — prompt texts live in the per-host program files;
+  emit covers every shape the router emitted.
 
 ### 3. `legacy/agent-memory/distill-hook.py` → `checkpoint` + `block`
 
@@ -38,15 +37,26 @@ compile into it.
   distill_contract` — fully expressed in `examples/memory-distill.json`,
   executable end-to-end via `ahe run` (verified: new prompt_id
   blocks once with the distill instruction, repeat prompt_id passes).
-- Status: **program-level parity achieved**; production wiring (installing
-  it in `~/.config/devin/config.json`) is a deliberate later step.
+- Transcript gate (parity): the baseline skips sessions whose transcript
+  exists but contains no user-role line; the program reproduces it as
+  `or[ file_size(transcript)<1, contains(file_tail(transcript,2MB),'"user"') ]`.
+  The tail window bounds the read; transcripts larger than 2 MB with the
+  last user line beyond it are the only divergence (baseline read the
+  whole file — unbounded by design).
+- Status: **landed** — wired in production for devin/claude/codex/cursor/
+  kimi (`~/.config/<host>` → `ahe run --program ~/.agent-hooks/programs/<host>.json`);
+  legacy scripts deleted after zero-config-reference check.
 
 ### 4. `legacy/anti-rot/anti-rot-hook.py` → `counters` + `inject` + `spawn` + `journal`
 
-- Becomes: `counter_add`/`when`/`once`/`inject`/`spawn`/`journal` — all
-  primitives exist; the program file encoding the rule table is pending.
-- Port notes: its per-Stop journal write becomes SessionEnd-only in the new
-  engine (today it journals every turn on hook-per-turn harnesses).
+- Landed: `counter_add`/`counter_set`/`counter_sum`/`counter_count`,
+  `list_push`/`list_*`, `when`/`once`, `inject`, `spawn`, `journal`,
+  `run capture` — the rule table is encoded in the per-host program files
+  (`~/.agent-hooks/programs/*.json`), verified against the baseline's
+  thresholds (repeat_cmd 4, repeat_read/wait/fail 3, test_runs 6).
+- Port notes: its per-Stop journal write is SessionEnd-only in the new
+  engine (baseline journaled every turn on hook-per-turn harnesses);
+  conditional external audit is preserved via `run` with `capture`.
 
 ### 5. `legacy/agent-memory/install.py` → emit layer
 

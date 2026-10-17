@@ -29,9 +29,9 @@ publication self-checks pass — i.e. at the push/PR boundary, never earlier.
 
 Two consequences agents keep getting wrong:
 
-- `gitvault` printing `config sign` on a local `git commit` means its
-  signed config went stale — an environment note, not a user task. Keep
-  working; leave changes uncommitted, and do not surface a signature ask.
+- A signing gate printing a stale-config demand on a local `git commit`
+  is an environment note, not a user task. Keep working; leave changes
+  uncommitted, and do not surface a signature ask.
 - If a mid-work signature request appears at all, it is a sequencing bug:
   audits have not run, so there is no evidence to bless. Report the state,
   continue the work.

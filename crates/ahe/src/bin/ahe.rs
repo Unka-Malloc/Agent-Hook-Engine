@@ -31,45 +31,12 @@ fn load_state(dir: &str, session: &str) -> State {
     let Ok(text) = std::fs::read_to_string(state_path(dir, session)) else {
         return State::default();
     };
-    let Ok(v) = serde_json::from_str::<Value>(&text) else {
-        return State::default();
-    };
-    let mut s = State::default();
-    if let Some(o) = v.get("checkpoints").and_then(Value::as_object) {
-        s.checkpoints = o.clone().into_iter().collect();
-    }
-    if let Some(o) = v.get("counters").and_then(Value::as_object) {
-        for (k, n) in o {
-            if let Some(i) = n.as_i64() {
-                s.counters.insert(k.clone(), i);
-            }
-        }
-    }
-    if let Some(o) = v.get("lists").and_then(Value::as_object) {
-        for (k, arr) in o {
-            if let Some(a) = arr.as_array() {
-                s.lists.insert(k.clone(), a.clone());
-            }
-        }
-    }
-    if let Some(a) = v.get("fired").and_then(Value::as_array) {
-        s.fired = a
-            .iter()
-            .filter_map(Value::as_str)
-            .map(str::to_string)
-            .collect();
-    }
-    s
+    serde_json::from_str::<State>(&text).unwrap_or_default()
 }
 
 fn save_state(dir: &str, session: &str, s: &State) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
-    let v = serde_json::json!({
-        "checkpoints": s.checkpoints,
-        "counters": s.counters,
-        "lists": s.lists,
-        "fired": s.fired,
-    });
+    let v = serde_json::to_value(s).map_err(std::io::Error::other)?;
     // Atomic: write-tmp-then-rename (Assumption A1's durability side).
     let tmp = state_path(dir, &format!(".{session}.tmp"));
     std::fs::write(&tmp, v.to_string())?;
@@ -106,11 +73,18 @@ fn main() {
         o.insert("_unparsed".into(), stdin.into());
         Value::Object(o)
     });
-    let session = payload
-        .get("session_id")
-        .or_else(|| payload.get("sessionId"))
-        .and_then(Value::as_str)
-        .unwrap_or("default");
+    // Session key: hosts spell it differently; coalesce the known variants.
+    let session = [
+        "session_id",
+        "sessionId",
+        "conversation_id",
+        "conversationId",
+        "chat_id",
+        "dialog_id",
+    ]
+    .iter()
+    .find_map(|k| payload.get(k).and_then(Value::as_str))
+    .unwrap_or("default");
 
     let prog = match Program::from_json(&std::fs::read_to_string(&prog_path).unwrap_or_else(|e| {
         eprintln!("cannot read {prog_path}: {e}");

@@ -52,12 +52,13 @@ FAIL_RE = re.compile(r"(error|failed|exit code: [1-9]|command not found|No such 
 LIMITS = {"repeat_cmd": 4, "repeat_read": 3, "wait_calls": 3, "test_runs": 6, "repeat_fail": 3}
 
 # ---------------------------------------------------------- 条件触发外部审计
-# 多指标联合 → 风险分；越线则调用独立审计执行体（默认 hermes -z），
-# 把审计纠偏回注原对话。ANTIROT_AUDIT_CMD 可替换执行体（测试用 cat 打桩）。
+# 多指标联合 → 风险分；越线则调用独立审计执行体（默认本地审计 CLI，
+# 由 ANTIROT_AUDIT_CMD 指定），把审计纠偏回注原对话。
+# ANTIROT_AUDIT_CMD 可替换执行体（测试用 cat 打桩）。
 AUDIT_DIR = os.path.join(HOME, ".anti-rot", "hooks", "audits")
 AUDIT_CMD = os.environ.get(
     "ANTIROT_AUDIT_CMD",
-    "hermes -z {prompt_q} -t '' --usage-file {usage_q}",
+    "<audit-cli> {prompt_q} --usage-file {usage_q}",
 )
 AUDIT_TIMEOUT_S = 45          # 子进程硬上限（挂载 timeout 留余量）
 ROT_AUDIT_AT = 70             # 腐败分阈值：只审显著腐化，长而健康的不审
