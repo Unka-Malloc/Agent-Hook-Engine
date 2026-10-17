@@ -14,6 +14,7 @@ use serde_json::{Map, Value};
 fn family(harness: &str) -> &'static str {
     match harness {
         "cursor" => "cursor",
+        "antigravity" => "antigravity",
         _ => "generic",
     }
 }
@@ -67,6 +68,9 @@ fn used_kinds(r: &Response) -> Vec<ActionKind> {
     if !r.journal.is_empty() {
         kinds.push(ActionKind::Journal);
     }
+    if !r.system.is_empty() {
+        kinds.push(ActionKind::SystemMessage);
+    }
     kinds
 }
 
@@ -95,17 +99,23 @@ pub fn emit(harness: &str, ev: HookEvent, rsp: &Response) -> Result<Value, Vec<S
         return Err(refused);
     }
 
-    // Partial lowering: a host without a first-class Followup carries it on
-    // its context channel (devin/claude/codex/kimi per caps).
-    let followup_as_context = caps
-        .actions
-        .iter()
-        .find(|(k, _)| *k == ActionKind::Followup)
-        .map(|(_, s)| *s == Support::Partial)
-        .unwrap_or(false);
+    // Partial lowering: a host without a first-class channel carries the
+    // kind on its context channel (recorded per harness in the matrix).
+    let partial = |kind: ActionKind| {
+        caps.actions
+            .iter()
+            .find(|(k, _)| *k == kind)
+            .map(|(_, s)| *s == Support::Partial)
+            .unwrap_or(false)
+    };
+    let followup_as_context = partial(ActionKind::Followup);
+    let system_as_context = partial(ActionKind::SystemMessage);
     let mut contexts = rsp.contexts.clone();
     if followup_as_context {
         contexts.extend(rsp.followups.iter().map(|f| format!("[followup] {f}")));
+    }
+    if system_as_context {
+        contexts.extend(rsp.system.iter().map(|s| format!("[system] {s}")));
     }
 
     Ok(match family(harness) {
@@ -126,6 +136,25 @@ pub fn emit(harness: &str, ev: HookEvent, rsp: &Response) -> Result<Value, Vec<S
             }
             Value::Object(o)
         }
+        "antigravity" => {
+            // PreInvocation contract: injectSteps.ephemeralMessage + continue.
+            let mut o = Map::new();
+            o.insert(
+                "continue".into(),
+                Value::from(rsp.decision != Decision::Block),
+            );
+            let mut steps = Vec::new();
+            for t in contexts.iter().chain(rsp.reasons.iter()) {
+                steps.push(Value::Object(Map::from_iter([(
+                    "ephemeralMessage".into(),
+                    Value::from(t.clone()),
+                )])));
+            }
+            if !steps.is_empty() {
+                o.insert("injectSteps".into(), Value::Array(steps));
+            }
+            Value::Object(o)
+        }
         _ => {
             let mut o = Map::new();
             match rsp.decision {
@@ -140,9 +169,14 @@ pub fn emit(harness: &str, ev: HookEvent, rsp: &Response) -> Result<Value, Vec<S
                 }
                 Decision::None => {}
             }
-            if !rsp.system.is_empty() {
+            if !rsp.system.is_empty() && !system_as_context {
                 o.insert("systemMessage".into(), rsp.system.join("\n").into());
             }
+            if !rsp.followups.is_empty() && !followup_as_context {
+                o.insert("followup_message".into(), rsp.followups.join("\n").into());
+            }
+            // hookSpecificOutput always carries the event name, even on a
+            // pass-through — the baseline did the same.
             let mut hso = Map::new();
             hso.insert("hookEventName".into(), pascal(ev).into());
             if !contexts.is_empty() {
@@ -151,9 +185,7 @@ pub fn emit(harness: &str, ev: HookEvent, rsp: &Response) -> Result<Value, Vec<S
             if !rsp.patch.is_empty() {
                 hso.insert("updatedInput".into(), Value::Object(rsp.patch.clone()));
             }
-            if !hso.is_empty() || rsp.decision == Decision::None {
-                o.insert("hookSpecificOutput".into(), Value::Object(hso));
-            }
+            o.insert("hookSpecificOutput".into(), Value::Object(hso));
             Value::Object(o)
         }
     })
@@ -212,5 +244,38 @@ mod tests {
         let out = emit("cursor", HookEvent::Stop, &r).unwrap();
         assert_eq!(out["continue"], true);
         assert_eq!(out["followup_message"], "keep going");
+    }
+
+    #[test]
+    fn cursor_system_message_folds_into_contexts() {
+        // SystemMessage is Partial on cursor — carried on the context
+        // channel instead of being dropped (Theorem 4's recorded lowering).
+        let r = rsp(|r| r.system.push("heads up".into()));
+        let out = emit("cursor", HookEvent::Stop, &r).unwrap();
+        assert_eq!(out["additional_context"], "[system] heads up");
+    }
+
+    #[test]
+    fn opencode_followup_reaches_the_wire() {
+        // Followup=S on opencode — the generic arm must emit it, not drop.
+        let r = rsp(|r| r.followups.push("continue please".into()));
+        let out = emit("opencode", HookEvent::Idle, &r).unwrap();
+        assert_eq!(out["followup_message"], "continue please");
+    }
+
+    #[test]
+    fn antigravity_uses_the_injectsteps_contract() {
+        // The harness's own shape — contexts become ephemeralMessage steps.
+        let r = rsp(|r| r.contexts.push("remember this".into()));
+        let out = emit("antigravity", HookEvent::UserPromptSubmit, &r).unwrap();
+        assert_eq!(out["continue"], true);
+        assert_eq!(out["injectSteps"][0]["ephemeralMessage"], "remember this");
+    }
+
+    #[test]
+    fn system_message_is_gated_and_emitted() {
+        let r = rsp(|r| r.system.push("note".into()));
+        let out = emit("devin", HookEvent::Stop, &r).unwrap();
+        assert_eq!(out["systemMessage"], "note");
     }
 }

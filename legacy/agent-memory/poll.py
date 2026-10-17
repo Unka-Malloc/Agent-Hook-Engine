@@ -135,22 +135,29 @@ def src_opencode(since: dt.datetime):
         return
     try:
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        since_ms = int(since.timestamp() * 1000)
         cur = con.execute(
-            "SELECT json_extract(data,'$.role') role, "
-            " json_extract(data,'$.time.created') ts, "
+            "SELECT json_extract(data,'$.time.created') ts, "
             " json_extract(data,'$.id') id "
             "FROM message WHERE json_extract(data,'$.role')='user' "
-            "ORDER BY ts")
-        for role, ts, mid in cur.fetchall():
+            "AND json_extract(data,'$.time.created')>=? "
+            "ORDER BY ts", (since_ms,))
+        rows = cur.fetchall()
+        mids = [mid for _, mid in rows]
+        texts: dict = {}
+        if mids:
+            # one bounded scan of part instead of one scan per message
+            ph = ",".join("?" * len(mids))
+            for m, t in con.execute(
+                    "SELECT json_extract(data,'$.messageID'), "
+                    " json_extract(data,'$.text') FROM part "
+                    f"WHERE json_extract(data,'$.messageID') IN ({ph})",
+                    mids):
+                texts.setdefault(m, []).append(str(t or ""))
+        for ts, mid in rows:
             t = dt.datetime.fromtimestamp((ts or 0) / 1000)
-            if t >= since:
-                # fetch text from parts table
-                parts = con.execute(
-                    "SELECT json_extract(data,'$.text') FROM part "
-                    "WHERE json_extract(data,'$.messageID')=?", (mid,))
-                text = " ".join(str(r[0] or "") for r in parts.fetchall())
-                yield {"file": "opencode.db", "seq": mid,
-                       "ts": t.isoformat(), "text": text}
+            yield {"file": "opencode.db", "seq": mid,
+                   "ts": t.isoformat(), "text": " ".join(texts.get(mid, []))}
         con.close()
     except Exception:
         pass
@@ -164,15 +171,13 @@ def src_kilo(since: dt.datetime):
         return
     try:
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-        for (ts, said, mid) in con.execute(
-                "SELECT ts, say, id FROM ui_messages WHERE say IN "
+        for (ts, said, txt) in con.execute(
+                "SELECT ts, say, text FROM ui_messages WHERE say IN "
                 "('text','user_feedback') ORDER BY ts"):
             t = dt.datetime.fromtimestamp((ts or 0) / 1000)
             if t < since:
                 continue
-            row = con.execute(
-                "SELECT text FROM ui_messages WHERE id=?", (mid,)).fetchone()
-            txt = (row[0] if row else "") or ""
+            txt = txt or ""
             # cheap dispatch-prompt heuristic
             if len(txt) > 6000 or txt.lstrip().startswith("<"):
                 continue

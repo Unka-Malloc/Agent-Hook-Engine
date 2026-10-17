@@ -28,10 +28,17 @@ fn state_path(dir: &str, session: &str) -> PathBuf {
 }
 
 fn load_state(dir: &str, session: &str) -> State {
-    let Ok(text) = std::fs::read_to_string(state_path(dir, session)) else {
+    let path = state_path(dir, session);
+    let Ok(text) = std::fs::read_to_string(&path) else {
         return State::default();
     };
-    serde_json::from_str::<State>(&text).unwrap_or_default()
+    serde_json::from_str::<State>(&text).unwrap_or_else(|e| {
+        eprintln!(
+            "state file {} is corrupt ({e}); starting fresh",
+            path.display()
+        );
+        State::default()
+    })
 }
 
 fn save_state(dir: &str, session: &str, s: &State) -> std::io::Result<()> {
@@ -73,18 +80,40 @@ fn main() {
         o.insert("_unparsed".into(), stdin.into());
         Value::Object(o)
     });
-    // Session key: hosts spell it differently; coalesce the known variants.
+    // Session key: hosts spell it differently — coalesce the baseline's
+    // full key table plus its nested-object fallbacks.
     let session = [
         "session_id",
         "sessionId",
         "conversation_id",
         "conversationId",
+        "thread_id",
+        "threadId",
         "chat_id",
-        "dialog_id",
+        "chatId",
+        "id",
     ]
     .iter()
-    .find_map(|k| payload.get(k).and_then(Value::as_str))
-    .unwrap_or("default");
+    .find_map(|k| {
+        payload
+            .get(k)
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+    })
+    .map(str::to_string)
+    .or_else(|| {
+        ["session", "conversation", "thread", "chat"]
+            .iter()
+            .find_map(|k| {
+                payload.get(k).and_then(|sub| {
+                    sub.get("id")
+                        .or_else(|| sub.get("session_id"))
+                        .and_then(Value::as_str)
+                })
+            })
+            .map(str::to_string)
+    })
+    .unwrap_or_else(|| "default".into());
 
     let prog = match Program::from_json(&std::fs::read_to_string(&prog_path).unwrap_or_else(|e| {
         eprintln!("cannot read {prog_path}: {e}");
@@ -100,7 +129,7 @@ fn main() {
         eprintln!("check: {err}"); // ill-formed program: report, still run —
     } // hook semantics prefer degrade-over-deny at invocation time.
 
-    let mut state = load_state(&dir, session);
+    let mut state = load_state(&dir, &session);
     let rsp = run_program(&prog, event, &payload, &mut state);
     // Emit first: if the host cannot express the response, nothing commits —
     // no checkpoints consumed, no journal lines, no spawns. Refusal is
@@ -118,7 +147,7 @@ fn main() {
             return;
         }
     };
-    if let Err(e) = save_state(&dir, session, &state) {
+    if let Err(e) = save_state(&dir, &session, &state) {
         eprintln!("state save failed: {e}");
     }
     // Perform the returned intents: journal lines append, spawns detach.

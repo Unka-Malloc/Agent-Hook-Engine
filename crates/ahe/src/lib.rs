@@ -33,8 +33,9 @@ pub enum HookEvent {
     PreToolUse,
     PostToolUse,
     /// Tool call finished with a failure (Kimi/Claude `PostToolUseFailure`,
-    /// Cursor `postToolUseFailure`). On harnesses without the dedicated event
-    /// it lowers to `on post_tool_use` guarded by the response payload.
+    /// Cursor `postToolUseFailure`). On harnesses without the dedicated event,
+    /// programs express it as `on post_tool_use` + a payload-failure guard —
+    /// that is the program-level idiom, not an engine lowering.
     PostToolUseFailure,
     PermissionRequest,
     /// Fires when the agent wants to finish a turn. On every observed harness
@@ -73,11 +74,13 @@ pub enum ActionKind {
     Approve,
     RewriteInput,
     Spawn,
-    Run,
     Journal,
-    Checkpoint,
-    Counter,
     Followup,
+    /// Host-facing user message (`systemMessage` family).
+    SystemMessage,
+    // Engine-internal kinds (run/checkpoint/counter/list/when/once) have no
+    // matrix cells: they execute inside the engine or the shim identically
+    // on every harness, so a per-host capability would be dead data.
 }
 
 /// Whether a harness can express an event or action. `Unsupported` and

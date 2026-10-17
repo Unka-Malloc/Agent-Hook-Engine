@@ -32,10 +32,8 @@ const DEVIN_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Approve, S),       // decision:approve
     (ActionKind::RewriteInput, S),  // updatedInput merge
     (ActionKind::Spawn, S),
-    (ActionKind::Run, S),
     (ActionKind::Journal, S),
-    (ActionKind::Checkpoint, S),
-    (ActionKind::Counter, S),
+    (ActionKind::SystemMessage, S),  // systemMessage channel
     (ActionKind::Followup, Partial), // block+reason is the only channel
 ];
 
@@ -65,10 +63,8 @@ const CLAUDE_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Approve, S),
     (ActionKind::RewriteInput, U),
     (ActionKind::Spawn, S),
-    (ActionKind::Run, S),
     (ActionKind::Journal, S),
-    (ActionKind::Checkpoint, S),
-    (ActionKind::Counter, S),
+    (ActionKind::SystemMessage, S), // documented systemMessage field
     (ActionKind::Followup, Partial),
 ];
 
@@ -91,10 +87,8 @@ const CODEX_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Approve, U),
     (ActionKind::RewriteInput, U),
     (ActionKind::Spawn, S),
-    (ActionKind::Run, S),
     (ActionKind::Journal, S),
-    (ActionKind::Checkpoint, S),
-    (ActionKind::Counter, S),
+    (ActionKind::SystemMessage, S),
     (ActionKind::Followup, Partial),
 ];
 
@@ -119,10 +113,8 @@ const CURSOR_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Block, S),         // continue:false halts the loop
     (ActionKind::RewriteInput, U),
     (ActionKind::Spawn, S),
-    (ActionKind::Run, S),
     (ActionKind::Journal, S),
-    (ActionKind::Checkpoint, S),
-    (ActionKind::Counter, S),
+    (ActionKind::SystemMessage, Partial), // no user channel — folds into contexts
 ];
 
 // Kimi: probed — seven events wired in ~/.kimi-code/config.toml [[hooks]].
@@ -141,8 +133,7 @@ const KIMI_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Block, Partial), // same family as Codex/Claude per contract
     (ActionKind::Spawn, S),
     (ActionKind::Journal, S),
-    (ActionKind::Checkpoint, S),
-    (ActionKind::Counter, S),
+    (ActionKind::SystemMessage, S),
     (ActionKind::Followup, Partial),
 ];
 
@@ -152,10 +143,9 @@ const KIMI_ACTIONS: &[(ActionKind, Support)] = &[
 const OPENCODE_EVENTS: &[(HookEvent, Support)] = &[(HookEvent::Idle, S)];
 
 const OPENCODE_ACTIONS: &[(ActionKind, Support)] = &[
-    (ActionKind::Followup, S), // session.prompt API
+    (ActionKind::Followup, S), // session.prompt API → followup_message field
     (ActionKind::InjectContext, S),
     (ActionKind::Spawn, S),
-    (ActionKind::Checkpoint, S),
 ];
 
 // Antigravity: the memory router carries a real PreInvocation contract

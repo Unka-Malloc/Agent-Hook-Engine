@@ -86,8 +86,8 @@ expr-tag   = '"lit"' | '"payload"' | '"checkpoint"' | '"counter"' | '"env"'
            | '"counter_sum"' | '"counter_count"' | '"fired_count"' ;
 expr-body  = '"v"'    ":" value                              (* lit       *)
            | '"path"' ":" string                             (* payload, file_* paths are exprs *)
-           | '"key"'  ":" string                             (* ckpt/counter/list_* *)
-           | '"name"' ":" string                             (* env       *)
+           | '"key"'  ":" string                             (* ckpt/list_* *)
+           | '"name"' ":" string                             (* counter/env *)
            | '"a"' ":" expr "," '"b"' ":" expr               (* binary    *)
            | '"re"' ":" string [ "," '"with"' ":" string ] "," '"on"' ":" expr
                                                              (* matches / replace *)
