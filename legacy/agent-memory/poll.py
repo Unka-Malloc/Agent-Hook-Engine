@@ -171,9 +171,9 @@ def src_kilo(since: dt.datetime):
         return
     try:
         con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-        for (ts, said, txt) in con.execute(
+        for i, (ts, said, txt) in enumerate(con.execute(
                 "SELECT ts, say, text FROM ui_messages WHERE say IN "
-                "('text','user_feedback') ORDER BY ts"):
+                "('text','user_feedback') ORDER BY ts")):
             t = dt.datetime.fromtimestamp((ts or 0) / 1000)
             if t < since:
                 continue
@@ -181,7 +181,7 @@ def src_kilo(since: dt.datetime):
             # cheap dispatch-prompt heuristic
             if len(txt) > 6000 or txt.lstrip().startswith("<"):
                 continue
-            yield {"file": "kilo.db", "seq": mid,
+            yield {"file": "kilo.db", "seq": i,
                    "ts": t.isoformat(), "text": txt}
         con.close()
     except Exception:
