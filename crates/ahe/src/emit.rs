@@ -8,15 +8,13 @@ use crate::eval::{Decision, Response};
 use crate::{ActionKind, HookEvent, Support};
 use serde_json::{Map, Value};
 
-/// Contract families observed in the wild: `Generic` covers the
-/// claude/codex/kimi/devin `decision`+`hookSpecificOutput` family; `Cursor`
-/// is the flat `{"continue": ..., "additional_context": ...}` shape.
-fn family(harness: &str) -> &'static str {
-    match harness {
-        "cursor" => "cursor",
-        "antigravity" => "antigravity",
-        _ => "generic",
+/// The wire name for `ev` on this harness — `caps.event_names` overrides
+/// win over the family's default Pascal spelling.
+fn wire_name(caps: &caps::HarnessCaps, ev: HookEvent) -> &'static str {
+    if let Some((_, name)) = caps.event_names.iter().find(|(e, _)| *e == ev) {
+        return name;
     }
+    pascal(ev)
 }
 
 fn pascal(ev: HookEvent) -> &'static str {
@@ -118,7 +116,7 @@ pub fn emit(harness: &str, ev: HookEvent, rsp: &Response) -> Result<Value, Vec<S
         contexts.extend(rsp.system.iter().map(|s| format!("[system] {s}")));
     }
 
-    Ok(match family(harness) {
+    Ok(match caps.family {
         "cursor" => {
             let mut o = Map::new();
             o.insert(
@@ -178,7 +176,7 @@ pub fn emit(harness: &str, ev: HookEvent, rsp: &Response) -> Result<Value, Vec<S
             // hookSpecificOutput always carries the event name, even on a
             // pass-through — the baseline did the same.
             let mut hso = Map::new();
-            hso.insert("hookEventName".into(), pascal(ev).into());
+            hso.insert("hookEventName".into(), wire_name(&caps, ev).into());
             if !contexts.is_empty() {
                 hso.insert("additionalContext".into(), contexts.join("\n\n").into());
             }

@@ -15,8 +15,10 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 /// Per-session mutable state — the `Σ` of the spec. Serializes directly;
-/// adding a field keeps persistence in sync automatically.
+/// adding a field keeps persistence in sync automatically, and
+/// `serde(default)` keeps files written by older versions loadable.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
 pub struct State {
     pub checkpoints: BTreeMap<String, Value>,
     pub counters: BTreeMap<String, i64>,
@@ -388,9 +390,11 @@ pub fn eval(e: &Expr, p: &Value, s: &State, v: &mut Vec<String>) -> Value {
 fn from_contract(v: &Value) -> Response {
     let mut r = Response::default();
     let dec = v.get("decision").and_then(Value::as_str).unwrap_or("");
-    if dec == "block" {
+    if dec == "block" || v.get("continue") == Some(&Value::Bool(false)) {
         r.decision = Decision::Block;
-    } else if dec == "approve" || v.get("continue") == Some(&Value::Bool(true)) {
+    } else if dec == "approve" {
+        // Only an explicit grant promotes — a bare `continue: true` is a
+        // neutral "keep going", not an approval (cursor-family field).
         r.decision = Decision::Approve;
     }
     for k in ["reason", "blockReason"] {
@@ -450,8 +454,15 @@ fn run_child(
             return Response::default();
         }
     };
+    // The stdin write can block if the child never reads it and the payload
+    // exceeds the pipe buffer — so it runs on its own thread and the deadline
+    // still bounds the whole exchange (kill closes the pipe, the writer
+    // thread exits on the resulting EPIPE).
     if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(payload.to_string().as_bytes());
+        let bytes = payload.to_string().into_bytes();
+        std::thread::spawn(move || {
+            let _ = stdin.write_all(&bytes);
+        });
     }
     let mut out = child.stdout.take().expect("piped stdout");
     let reader = std::thread::spawn(move || {

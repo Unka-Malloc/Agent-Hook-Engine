@@ -23,8 +23,9 @@ adapter.
 - `eval` — dynamic semantics: total expression eval, ordered step fold, the
   `Response` merge monoid, bounded `run` children, per-session state
 - `emit` — lowering `↓_a`: `Response` → a concrete host contract
-  (generic claude/codex/kimi/devin family + cursor's flat shape), failing
-  closed on Unsupported/Unknown action kinds
+  (generic `hookSpecificOutput` family, cursor's flat `continue` shape,
+  antigravity's `injectSteps`), failing closed on Unsupported/Unknown
+  action kinds
 - `caps` — the probed per-harness capability matrix
 - `bin/ahe` — the invocation entrypoint: stdin payload → run → contract
   JSON on stdout; state persists per session under `--state-dir`

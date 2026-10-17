@@ -22,8 +22,21 @@ fn arg(args: &[String], flag: &str) -> Option<String> {
 }
 
 fn state_path(dir: &str, session: &str) -> PathBuf {
+    // The session key comes from a semi-trusted payload field — whitelist
+    // filename characters so `../` can't escape --state-dir.
+    let safe: String = session
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let safe = if safe.is_empty() { "default" } else { &safe };
     let mut p = PathBuf::from(dir);
-    p.push(format!("{session}.json"));
+    p.push(format!("{safe}.json"));
     p
 }
 

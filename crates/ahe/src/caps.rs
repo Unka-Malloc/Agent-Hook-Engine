@@ -7,8 +7,17 @@ use crate::{ActionKind, HookEvent, Support};
 use Support::{Partial, Supported as S, Unknown as U, Unsupported as X};
 
 pub struct HarnessCaps {
+    /// The wire-contract family emit lowers onto: `generic`
+    /// (`hookSpecificOutput`+`decision`), `cursor` (flat `continue`), or
+    /// `antigravity` (`injectSteps`). The only authority for the mapping —
+    /// emit reads it instead of holding a second dispatch table.
+    pub family: &'static str,
     pub events: &'static [(HookEvent, Support)],
     pub actions: &'static [(ActionKind, Support)],
+    /// Wire-name overrides where a host's event spelling diverges from the
+    /// family's default (e.g. Devin's `PostCompaction` vs Claude's
+    /// `PostCompact`).
+    pub event_names: &'static [(HookEvent, &'static str)],
     /// Payload fields beyond the common envelope this harness is known to
     /// send (e.g. Devin's per-turn `prompt_id`, Claude's `transcript_path`).
     pub payload_fields: &'static [&'static str],
@@ -185,43 +194,61 @@ const NO_SURFACE_EVENTS: &[(HookEvent, Support)] = &[
 pub fn capabilities(harness: &str) -> Option<HarnessCaps> {
     Some(match harness {
         "devin" => HarnessCaps {
+            family: "generic",
             events: DEVIN_EVENTS,
             actions: DEVIN_ACTIONS,
+            // Devin's wire name for post_compaction is PostCompaction, not
+            // the family default PostCompact.
+            event_names: &[(HookEvent::PostCompaction, "PostCompaction")],
             payload_fields: &["prompt_id"],
         },
         "claude" => HarnessCaps {
+            family: "generic",
             events: CLAUDE_EVENTS,
             actions: CLAUDE_ACTIONS,
+            event_names: &[],
             payload_fields: &["transcript_path", "stop_hook_active"],
         },
         "codex" => HarnessCaps {
+            family: "generic",
             events: CODEX_EVENTS,
             actions: CODEX_ACTIONS,
+            event_names: &[],
             payload_fields: &["source"],
         },
         "cursor" => HarnessCaps {
+            family: "cursor",
             events: CURSOR_EVENTS,
             actions: CURSOR_ACTIONS,
+            event_names: &[],
             payload_fields: &[],
         },
         "kimi" => HarnessCaps {
+            family: "generic",
             events: KIMI_EVENTS,
             actions: KIMI_ACTIONS,
+            event_names: &[],
             payload_fields: &[],
         },
         "opencode" => HarnessCaps {
+            family: "generic",
             events: OPENCODE_EVENTS,
             actions: OPENCODE_ACTIONS,
+            event_names: &[],
             payload_fields: &[],
         },
         "antigravity" => HarnessCaps {
+            family: "antigravity",
             events: ANTIGRAVITY_EVENTS,
             actions: ANTIGRAVITY_ACTIONS,
+            event_names: &[],
             payload_fields: &["invocationNum", "artifactDirectoryPath"],
         },
         "dsh" | "commandcode" => HarnessCaps {
+            family: "generic",
             events: NO_SURFACE_EVENTS,
             actions: &[],
+            event_names: &[],
             payload_fields: &[],
         },
         _ => return None,
