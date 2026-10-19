@@ -343,5 +343,5 @@ is unprobed — never conflated with `unsupported`.
 | cursor | 9 wired: session_start, user_prompt_submit, pre/post_tool_use(+failure), pre_shell_exec, pre_mcp_exec, post_agent_response, stop | flat `{"continue":true}` contract; followup_message |
 | kimi | 7 wired: user_prompt_submit, pre/post_tool_use(+failure), permission_request, stop(+failure) | toml `[[hooks]]` shape |
 | opencode | idle (plugin) | plugin API: session.prompt |
-| antigravity | user_prompt_submit (partial — PreInvocation contract) | injectSteps.ephemeralMessage |
+| antigravity | 5 wired: pre/post_tool_use, user_prompt_submit (PreInvocation), post_agent_response (PostInvocation), stop | per-event contracts: decision/overwrite, injectSteps.ephemeralMessage, terminationBehavior |
 | dsh, commandcode | none observed | poll fallback only |

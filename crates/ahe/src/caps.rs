@@ -146,9 +146,8 @@ const KIMI_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Followup, Partial),
 ];
 
-// opencode: probed — plugin surface; session.idle wired via
-// agent-memory-distill.js. The plugin event API exposes more event types
-// (unprobed which).
+// opencode: probed — plugin surface; session.idle wired via a session
+// plugin. The plugin event API exposes more event types (unprobed which).
 const OPENCODE_EVENTS: &[(HookEvent, Support)] = &[(HookEvent::Idle, S)];
 
 const OPENCODE_ACTIONS: &[(ActionKind, Support)] = &[
@@ -157,13 +156,24 @@ const OPENCODE_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Spawn, S),
 ];
 
-// Antigravity: the memory router carries a real PreInvocation contract
-// (injectSteps.ephemeralMessage on invocationNum/artifactDirectoryPath
-// payloads) — a prompt-submission-class event with inject support.
-const ANTIGRAVITY_EVENTS: &[(HookEvent, Support)] = &[(HookEvent::UserPromptSubmit, Partial)];
+// Antigravity: probed — hooks.json at ~/.gemini/config/hooks.json wires all
+// five events (PreToolUse/PostToolUse grouped under matcher, PreInvocation/
+// PostInvocation/Stop flat). Official spec documents stdin/stdout JSON
+// contracts: PreInvocation→injectSteps.ephemeralMessage, PreToolUse→decision,
+// Stop→decision:continue.
+const ANTIGRAVITY_EVENTS: &[(HookEvent, Support)] = &[
+    (HookEvent::PreToolUse, S),
+    (HookEvent::PostToolUse, S),
+    (HookEvent::UserPromptSubmit, S),  // PreInvocation
+    (HookEvent::PostAgentResponse, S), // PostInvocation
+    (HookEvent::Stop, S),
+];
 
 const ANTIGRAVITY_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::InjectContext, S), // injectSteps.ephemeralMessage
+    (ActionKind::Block, S),         // PreToolUse decision:deny; Stop decision:continue
+    (ActionKind::Approve, S),       // PreToolUse decision:allow
+    (ActionKind::RewriteInput, S),  // PreToolUse overwrite shallow merge
     (ActionKind::Followup, Partial),
 ];
 

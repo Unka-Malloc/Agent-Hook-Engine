@@ -386,16 +386,25 @@ pub fn eval(e: &Expr, p: &Value, s: &State, v: &mut Vec<String>) -> Value {
 }
 
 /// Parse a child's stdout against the shared hook contract into a `Response`.
-/// Covers the claude/codex/kimi/devin family plus cursor's flat contract.
-fn from_contract(v: &Value) -> Response {
+/// Covers the claude/codex/kimi/devin family, cursor's flat contract, and
+/// the antigravity family this engine itself emits — parity with the
+/// dispatcher baseline, which merged injectSteps and forwarded contract
+/// keys. Known values that cannot merge are violations, never silent drops.
+fn from_contract(v: &Value, violations: &mut Vec<String>) -> Response {
     let mut r = Response::default();
-    let dec = v.get("decision").and_then(Value::as_str).unwrap_or("");
-    if dec == "block" || v.get("continue") == Some(&Value::Bool(false)) {
-        r.decision = Decision::Block;
-    } else if dec == "approve" {
+    match v.get("decision").and_then(Value::as_str) {
+        Some("block") | Some("deny") => r.decision = Decision::Block,
         // Only an explicit grant promotes — a bare `continue: true` is a
         // neutral "keep going", not an approval (cursor-family field).
-        r.decision = Decision::Approve;
+        Some("approve") | Some("allow") => r.decision = Decision::Approve,
+        // antigravity Stop: "continue" blocks the stop; "stop" is the host
+        // default and contributes nothing.
+        Some("continue") => r.decision = Decision::Block,
+        Some("stop") | None => {}
+        Some(other) => violations.push(format!("run: unmapped decision {other:?}")),
+    }
+    if v.get("continue") == Some(&Value::Bool(false)) {
+        r.decision = Decision::Block;
     }
     for k in ["reason", "blockReason"] {
         if let Some(t) = v.get(k).and_then(Value::as_str) {
@@ -423,6 +432,22 @@ fn from_contract(v: &Value) -> Response {
         if let Some(Value::Object(p)) = h.get("updatedInput") {
             r.patch.extend(p.clone());
         }
+    }
+    // antigravity family — the keys emit() produces for that host.
+    if let Some(Value::Object(o)) = v.get("overwrite") {
+        r.patch.extend(o.clone());
+    }
+    if let Some(steps) = v.get("injectSteps").and_then(Value::as_array) {
+        for s in steps {
+            if let Some(t) = s.get("ephemeralMessage").and_then(Value::as_str) {
+                r.contexts.push(t.into());
+            }
+        }
+    }
+    match v.get("terminationBehavior").and_then(Value::as_str) {
+        Some("force_continue") => r.decision = Decision::Block,
+        Some(other) => violations.push(format!("run: unmapped terminationBehavior {other:?}")),
+        None => {}
     }
     r
 }
@@ -489,7 +514,7 @@ fn run_child(
     let bytes = reader.join().unwrap_or_default();
     match serde_json::from_slice::<Value>(&bytes) {
         Ok(j) => {
-            let mut r = from_contract(&j);
+            let mut r = from_contract(&j, v);
             r.captured = Some(j);
             r
         }
@@ -684,6 +709,37 @@ mod tests {
                 steps,
             }],
         }
+    }
+
+    #[test]
+    fn from_contract_reads_the_antigravity_family() {
+        // Parity: emit() lowers these keys; a child returning them must not
+        // lose the whole intent set (the dispatcher merged injectSteps).
+        let mut v = Vec::new();
+        let r = from_contract(
+            &json!({
+                "decision": "deny",
+                "reason": "no",
+                "overwrite": {"CommandLine": "ls"},
+                "injectSteps": [{"ephemeralMessage": "note"}]
+            }),
+            &mut v,
+        );
+        assert_eq!(r.decision, Decision::Block);
+        assert!(r.reasons.contains(&"no".to_string()));
+        assert_eq!(r.patch["CommandLine"], "ls");
+        assert!(r.contexts.contains(&"note".to_string()));
+        assert!(v.is_empty());
+        // Stop-event vocabulary maps back the same way emit() wrote it.
+        let r = from_contract(
+            &json!({"decision": "continue", "terminationBehavior": "force_continue"}),
+            &mut v,
+        );
+        assert_eq!(r.decision, Decision::Block);
+        // Known-but-unmapped values surface on the violations channel.
+        let r = from_contract(&json!({"decision": "ask"}), &mut v);
+        assert_eq!(r.decision, Decision::None);
+        assert!(v.iter().any(|s| s.contains("ask")));
     }
 
     #[test]

@@ -134,25 +134,112 @@ pub fn emit(harness: &str, ev: HookEvent, rsp: &Response) -> Result<Value, Vec<S
             }
             Value::Object(o)
         }
-        "antigravity" => {
-            // PreInvocation contract: injectSteps.ephemeralMessage + continue.
-            let mut o = Map::new();
-            o.insert(
-                "continue".into(),
-                Value::from(rsp.decision != Decision::Block),
-            );
-            let mut steps = Vec::new();
-            for t in contexts.iter().chain(rsp.reasons.iter()) {
-                steps.push(Value::Object(Map::from_iter([(
-                    "ephemeralMessage".into(),
-                    Value::from(t.clone()),
-                )])));
+        "antigravity" => match ev {
+            // Per-event wire contracts from the host's hook spec.
+            HookEvent::PreToolUse => {
+                let mut o = Map::new();
+                // Only real decisions reach the wire: None abstains (no key)
+                // — emitting "allow" for a no-opinion program would
+                // auto-approve what the host would have asked the user.
+                match rsp.decision {
+                    Decision::Block => {
+                        o.insert("decision".into(), "deny".into());
+                    }
+                    Decision::Approve => {
+                        o.insert("decision".into(), "allow".into());
+                    }
+                    Decision::None => {}
+                }
+                // Followups ride `contexts` (Partial → folded above); system
+                // is unprobed and refused upstream. Reasons + folded intents.
+                let mut reason = rsp.reasons.clone();
+                reason.extend(contexts.iter().cloned());
+                if !reason.is_empty() {
+                    o.insert("reason".into(), reason.join("\n").into());
+                }
+                if !rsp.patch.is_empty() {
+                    o.insert("overwrite".into(), Value::Object(rsp.patch.clone()));
+                }
+                Value::Object(o)
             }
-            if !steps.is_empty() {
-                o.insert("injectSteps".into(), Value::Array(steps));
+            HookEvent::PostToolUse => {
+                // The spec accepts only `{}` here — expressive intents have
+                // no channel; refuse rather than silently drop them. Every
+                // un-carriable field must refuse, or a Block decision would
+                // collapse to {} while emit still reports Ok.
+                if rsp.decision != Decision::None
+                    || !rsp.reasons.is_empty()
+                    || !rsp.patch.is_empty()
+                    || !contexts.is_empty()
+                    || !rsp.followups.is_empty()
+                    || !rsp.system.is_empty()
+                {
+                    return Err(vec![
+                        "antigravity PostToolUse carries no context channel".into()
+                    ]);
+                }
+                Value::Object(Map::new())
             }
-            Value::Object(o)
-        }
+            HookEvent::Stop => {
+                // "stop" carries nothing but the decision itself — a context
+                // or overwrite intent has no channel and must refuse, not
+                // collapse into a clean-looking contract.
+                if !rsp.patch.is_empty() {
+                    return Err(vec!["antigravity Stop carries no overwrite channel".into()]);
+                }
+                let mut o = Map::new();
+                match rsp.decision {
+                    Decision::Block => {
+                        o.insert("decision".into(), "continue".into());
+                        let mut reason = rsp.reasons.clone();
+                        reason.extend(contexts.iter().cloned());
+                        if !reason.is_empty() {
+                            o.insert("reason".into(), reason.join("\n").into());
+                        }
+                    }
+                    _ => {
+                        if !contexts.is_empty() || !rsp.reasons.is_empty() {
+                            return Err(vec![
+                                "antigravity Stop carries no context channel without a block decision".into()
+                            ]);
+                        }
+                        o.insert("decision".into(), "stop".into());
+                    }
+                }
+                Value::Object(o)
+            }
+            // PreInvocation and PostInvocation share the injectSteps shape —
+            // the only context channel on those events. Decisions and
+            // overwrite have no channel; unwired events refuse outright.
+            HookEvent::UserPromptSubmit | HookEvent::PostAgentResponse => {
+                if rsp.decision == Decision::Approve
+                    || !rsp.patch.is_empty()
+                    || (ev == HookEvent::UserPromptSubmit && rsp.decision == Decision::Block)
+                {
+                    return Err(vec![format!(
+                        "antigravity {ev:?} carries no channel for that intent"
+                    )]);
+                }
+                let mut o = Map::new();
+                let mut steps = Vec::new();
+                for t in contexts.iter().chain(rsp.reasons.iter()) {
+                    steps.push(Value::Object(Map::from_iter([(
+                        "ephemeralMessage".into(),
+                        Value::from(t.clone()),
+                    )])));
+                }
+                if !steps.is_empty() {
+                    o.insert("injectSteps".into(), Value::Array(steps));
+                }
+                if ev == HookEvent::PostAgentResponse && rsp.decision == Decision::Block {
+                    o.insert("terminationBehavior".into(), "force_continue".into());
+                }
+                Value::Object(o)
+            }
+            _ => {
+                return Err(vec![format!("antigravity does not wire {ev:?}")]);
+            }
+        },
         _ => {
             let mut o = Map::new();
             match rsp.decision {
@@ -266,8 +353,132 @@ mod tests {
         // The harness's own shape — contexts become ephemeralMessage steps.
         let r = rsp(|r| r.contexts.push("remember this".into()));
         let out = emit("antigravity", HookEvent::UserPromptSubmit, &r).unwrap();
-        assert_eq!(out["continue"], true);
         assert_eq!(out["injectSteps"][0]["ephemeralMessage"], "remember this");
+    }
+
+    #[test]
+    fn antigravity_pretool_uses_the_decision_contract() {
+        let r = rsp(|r| {
+            r.decision = Decision::Block;
+            r.reasons.push("no".into());
+            r.contexts.push("ctx".into());
+            r.patch.insert("CommandLine".into(), json!("ls"));
+        });
+        let out = emit("antigravity", HookEvent::PreToolUse, &r).unwrap();
+        assert_eq!(out["decision"], "deny");
+        assert!(out["reason"].as_str().unwrap().contains("ctx"));
+        assert_eq!(out["overwrite"]["CommandLine"], "ls");
+        // Contexts carry on reason — never silently dropped.
+        let r = rsp(|r| r.decision = Decision::Approve);
+        let out = emit("antigravity", HookEvent::PreToolUse, &r).unwrap();
+        assert_eq!(out["decision"], "allow");
+        // None abstains — never an affirmative allow the program didn't state.
+        let abstain = emit("antigravity", HookEvent::PreToolUse, &Response::default()).unwrap();
+        assert!(abstain.get("decision").is_none());
+    }
+
+    #[test]
+    fn antigravity_pretool_reason_lists_each_intent_once() {
+        // Followup is Partial → folded into contexts upstream; the wire arm
+        // must not extend reason with raw followups a second time.
+        let r = rsp(|r| {
+            r.decision = Decision::Block;
+            r.followups.push("try again".into());
+        });
+        let out = emit("antigravity", HookEvent::PreToolUse, &r).unwrap();
+        let reason = out["reason"].as_str().unwrap();
+        assert_eq!(reason.matches("[followup] try again").count(), 1);
+    }
+
+    #[test]
+    fn antigravity_posttool_refuses_expressive_intents() {
+        // Spec accepts only `{}` — a context request must not reach the wire.
+        let r = rsp(|r| r.contexts.push("note".into()));
+        assert!(emit("antigravity", HookEvent::PostToolUse, &r).is_err());
+        // Every un-carriable field refuses — a Block decision must not
+        // silently collapse to {} while intents commit.
+        for r in [
+            rsp(|r| r.decision = Decision::Block),
+            rsp(|r| r.decision = Decision::Approve),
+            rsp(|r| r.reasons.push("why".into())),
+            rsp(|r| {
+                r.patch.insert("CommandLine".into(), json!("ls"));
+            }),
+            rsp(|r| r.followups.push("again".into())),
+            rsp(|r| r.system.push("sys".into())),
+        ] {
+            assert!(emit("antigravity", HookEvent::PostToolUse, &r).is_err());
+        }
+        assert_eq!(
+            emit("antigravity", HookEvent::PostToolUse, &Response::default()).unwrap(),
+            json!({})
+        );
+    }
+
+    #[test]
+    fn antigravity_stop_continue_maps_block() {
+        let r = rsp(|r| {
+            r.decision = Decision::Block;
+            r.reasons.push("tests running".into());
+        });
+        let out = emit("antigravity", HookEvent::Stop, &r).unwrap();
+        assert_eq!(out["decision"], "continue");
+        assert_eq!(out["reason"], "tests running");
+        assert_eq!(
+            emit("antigravity", HookEvent::Stop, &Response::default()).unwrap()["decision"],
+            "stop"
+        );
+    }
+
+    #[test]
+    fn antigravity_stop_refuses_un_carriable_intents() {
+        // "stop" carries the decision alone — an inject or overwrite without
+        // a block decision has no channel and must not collapse to {}.
+        for r in [
+            rsp(|r| r.contexts.push("note".into())),
+            rsp(|r| r.reasons.push("why".into())),
+            rsp(|r| {
+                r.patch.insert("CommandLine".into(), json!("ls"));
+            }),
+        ] {
+            assert!(emit("antigravity", HookEvent::Stop, &r).is_err());
+        }
+    }
+
+    #[test]
+    fn antigravity_invocation_refuses_un_carriable_intents() {
+        // injectSteps is the only channel: decisions (except PostInvocation's
+        // terminationBehavior) and overwrite refuse; unwired events refuse.
+        for (ev, r) in [
+            (
+                HookEvent::UserPromptSubmit,
+                rsp(|r| r.decision = Decision::Block),
+            ),
+            (
+                HookEvent::UserPromptSubmit,
+                rsp(|r| r.decision = Decision::Approve),
+            ),
+            (
+                HookEvent::PostAgentResponse,
+                rsp(|r| r.decision = Decision::Approve),
+            ),
+            (
+                HookEvent::UserPromptSubmit,
+                rsp(|r| {
+                    r.patch.insert("CommandLine".into(), json!("ls"));
+                }),
+            ),
+            (HookEvent::SessionStart, Response::default()),
+        ] {
+            assert!(emit("antigravity", ev, &r).is_err());
+        }
+    }
+
+    #[test]
+    fn antigravity_postinvocation_carries_termination() {
+        let r = rsp(|r| r.decision = Decision::Block);
+        let out = emit("antigravity", HookEvent::PostAgentResponse, &r).unwrap();
+        assert_eq!(out["terminationBehavior"], "force_continue");
     }
 
     #[test]
