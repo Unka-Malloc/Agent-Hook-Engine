@@ -308,9 +308,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parses_the_production_distill_program() {
-        // The in-production incremental distillation, expressed in the DSL —
-        // proves the model carries a real hook, not a toy.
+    fn parses_the_distill_example_program() {
+        // A real incremental-distillation hook, expressed in the DSL —
+        // proves the model carries a real program, not a toy.
         let text = include_str!("../../../examples/memory-distill.json");
         let p = Program::from_json(text).expect("example program parses");
         assert_eq!(p.name, "memory-distill");

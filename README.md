@@ -13,8 +13,7 @@ typing rules, big-step semantics, and proofs) live in
 [`docs/dsl-design.md`](docs/dsl-design.md).
 
 AHE is developed standalone so the DSL and the harness mapping can settle;
-it is designed to be embedded as the hook capability of a larger agent
-adapter.
+the engine exposes a stable stdin→stdout contract any host can embed.
 
 ## Crate layout
 
@@ -40,11 +39,11 @@ cargo install ahe
 
 ```
 ahe run --program program.json --harness devin --event post_tool_use \
-    --state-dir ~/.agent-hooks/state < payload.json
+    --state-dir ~/.local/state/ahe < payload.json
 ```
 
-`examples/memory-distill.json` is a production hook (incremental memory
-distillation) already expressed in the DSL.
+`examples/memory-distill.json` is a complete real-world hook program
+(incremental memory distillation) expressed in the DSL.
 
 ## Run and verify
 
