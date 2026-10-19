@@ -261,7 +261,7 @@ pub fn emit(harness: &str, ev: HookEvent, rsp: &Response) -> Result<Value, Vec<S
                 o.insert("followup_message".into(), rsp.followups.join("\n").into());
             }
             // hookSpecificOutput always carries the event name, even on a
-            // pass-through — the baseline did the same.
+            // pass-through — hosts expect it populated unconditionally.
             let mut hso = Map::new();
             hso.insert("hookEventName".into(), wire_name(&caps, ev).into());
             if !contexts.is_empty() {

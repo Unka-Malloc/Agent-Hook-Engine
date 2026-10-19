@@ -40,6 +40,6 @@ Thumbs.db
 *.swp
 *.swo
 
-# Legacy reference scripts' interpreter state
+# Python interpreter artifacts
 __pycache__/
 *.py[cod]

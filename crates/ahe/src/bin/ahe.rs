@@ -93,8 +93,8 @@ fn main() {
         o.insert("_unparsed".into(), stdin.into());
         Value::Object(o)
     });
-    // Session key: hosts spell it differently — coalesce the baseline's
-    // full key table plus its nested-object fallbacks.
+    // Session key: hosts spell it differently — coalesce the known key
+    // spellings plus their nested-object fallbacks.
     let session = [
         "session_id",
         "sessionId",

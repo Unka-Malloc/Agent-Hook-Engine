@@ -2,8 +2,7 @@
 //!
 //! One hook program, written once in the DSL ([`model`]), is evaluated by the
 //! engine and lowered onto each agent harness's native hook surface — the
-//! per-harness reality lives in [`caps`]. The pipeline it replaces is
-//! private; the port contract and rationale live in `docs/`.
+//! per-harness reality lives in [`caps`].
 //!
 //! Core principle: extract universal primitives that cover every agent
 //! harness. A harness-specific capability is not rejected — it is converted

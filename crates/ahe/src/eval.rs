@@ -387,9 +387,9 @@ pub fn eval(e: &Expr, p: &Value, s: &State, v: &mut Vec<String>) -> Value {
 
 /// Parse a child's stdout against the shared hook contract into a `Response`.
 /// Covers the claude/codex/kimi/devin family, cursor's flat contract, and
-/// the antigravity family this engine itself emits — parity with the
-/// dispatcher baseline, which merged injectSteps and forwarded contract
-/// keys. Known values that cannot merge are violations, never silent drops.
+/// the antigravity family this engine itself emits — every family that can
+/// reach the wire must also read back. Known values that cannot merge are
+/// violations, never silent drops.
 fn from_contract(v: &Value, violations: &mut Vec<String>) -> Response {
     let mut r = Response::default();
     match v.get("decision").and_then(Value::as_str) {
