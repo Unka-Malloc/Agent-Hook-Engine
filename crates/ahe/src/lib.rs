@@ -14,6 +14,7 @@ pub mod caps;
 pub mod check;
 pub mod emit;
 pub mod eval;
+pub mod install;
 pub mod model;
 
 use serde::{Deserialize, Serialize};

@@ -12,10 +12,21 @@ hooks. The design axioms and the complete formal specification (EBNF grammar,
 typing rules, big-step semantics, and proofs) live in
 [`docs/dsl-design.md`](docs/dsl-design.md).
 
-AHE is developed standalone so the DSL and the harness mapping can settle;
-the engine exposes a stable stdin→stdout contract any host can embed.
+AHE owns hook declarations, installation planning and hook DSL lowering.
+A4AA consumes that installation contract and harness catalog while retaining
+Agent session driving and callbacks. The host writes returned installation
+artifacts, executes Agent sessions and applies the capabilities its harness
+supports. AOR owns workflow gates, not hook adaptation. Probator and GitVault
+are optional local tools, not AHE runtime or build dependencies.
+
+Consume AHE through the Rust SDK or the per-event `ahe run` CLI; both share
+the runtime pipeline. The CLI persists session state but is not a resident
+NDJSON service. See [integration modes](docs/integration-modes.md) for the
+installation boundary and the CLI's diagnostic and fail-open behavior.
 
 ## Crate layout
+
+One `ahe` crate contains the shared library modules and the CLI:
 
 - `model` — the DSL AST (JSON program → handlers → steps/conditions)
 - `check` — static semantics: expression typing + event×action legality
@@ -23,9 +34,18 @@ the engine exposes a stable stdin→stdout contract any host can embed.
   `Response` merge monoid, bounded `run` children, per-session state
 - `emit` — lowering `↓_a`: `Response` → a concrete host contract
   (generic `hookSpecificOutput` family, cursor's flat `continue` shape,
-  antigravity's `injectSteps`), failing closed on Unsupported/Unknown
-  action kinds
+  antigravity's per-event contract family: PreToolUse →
+  `decision`/`reason`/`overwrite`, PostToolUse → `{}` only,
+  PreInvocation/PostInvocation → `injectSteps[].ephemeralMessage` +
+  `terminationBehavior`, Stop → `decision`), failing closed on
+  Unsupported/Unknown action kinds
 - `caps` — the probed per-harness capability matrix
+- `install` — hook *installation*, a contract separate from the runtime
+  DSL: kebab-case `install::HookDecl`/`install::HookSurface` declarations
+  lowered by `install::adapt` into user-home-relative artifacts and a
+  support report; per-harness store descriptors live in
+  `install::harnesses`. Installation coverage is not runtime action
+  support — `caps` stays authoritative for DSL actions
 - `bin/ahe` — the invocation entrypoint: stdin payload → run → contract
   JSON on stdout; state persists per session under `--state-dir`
 
@@ -53,4 +73,4 @@ scripts/verify.sh    # fmt + clippy + tests
 
 ## Documentation
 
-Entry point: `docs/README.md`.
+Entry point: [docs/README.md](docs/README.md).
