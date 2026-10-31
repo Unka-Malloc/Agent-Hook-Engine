@@ -68,7 +68,16 @@ fn legal(event: HookEvent, op: &'static str) -> bool {
     use HookEvent as E;
     match op {
         "rewrite" => matches!(event, E::PreToolUse | E::PreShellExec | E::PreMcpExec),
-        "approve" => event == E::PermissionRequest,
+        // Approve is legal wherever a permission verdict is expressible —
+        // the dedicated request event AND the pre-exec events whose pending
+        // action is itself a permission question. Antigravity wires no
+        // permission_request; its only approval surface is PreToolUse's
+        // decision:allow, so gating approve to PermissionRequest alone made
+        // affirmative approval unauthorable there at all.
+        "approve" => matches!(
+            event,
+            E::PermissionRequest | E::PreToolUse | E::PreShellExec | E::PreMcpExec
+        ),
         "block" => matches!(
             event,
             E::PreToolUse
@@ -340,6 +349,20 @@ mod tests {
         ));
         assert!(matches!(errs[0], CheckError::IllegalStep { .. }));
         let errs = check_program(&program(HookEvent::SessionStart, vec![Step::Approve], None));
+        assert!(matches!(errs[0], CheckError::IllegalStep { .. }));
+        // Approve is legal on the permission-shaped pre-exec events — the
+        // surfaces where an affirmative verdict actually exists — and still
+        // illegal on binary events like Stop where nothing is approvable.
+        for event in [
+            HookEvent::PreToolUse,
+            HookEvent::PreShellExec,
+            HookEvent::PreMcpExec,
+            HookEvent::PermissionRequest,
+        ] {
+            let errs = check_program(&program(event, vec![Step::Approve], None));
+            assert!(errs.is_empty(), "approve must be legal on {event:?}");
+        }
+        let errs = check_program(&program(HookEvent::Stop, vec![Step::Approve], None));
         assert!(matches!(errs[0], CheckError::IllegalStep { .. }));
         let errs = check_program(&program(HookEvent::Stop, vec![], Some(".*")));
         assert!(matches!(errs[0], CheckError::MatcherOnNonTool(_)));

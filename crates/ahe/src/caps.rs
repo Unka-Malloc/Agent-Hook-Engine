@@ -9,8 +9,11 @@ use Support::{Partial, Supported as S, Unknown as U, Unsupported as X};
 pub struct HarnessCaps {
     /// The wire-contract family emit lowers onto: `generic`
     /// (`hookSpecificOutput`+`decision`), `cursor` (flat `continue`), or
-    /// `antigravity` (`injectSteps`). The only authority for the mapping —
-    /// emit reads it instead of holding a second dispatch table.
+    /// `antigravity` (per-event contracts — PreToolUse
+    /// `decision`/`reason`/`overwrite`, PostToolUse `{}` only,
+    /// PreInvocation/PostInvocation `injectSteps[].ephemeralMessage` +
+    /// `terminationBehavior`, Stop `decision`). The only authority for the
+    /// mapping — emit reads it instead of holding a second dispatch table.
     pub family: &'static str,
     pub events: &'static [(HookEvent, Support)],
     pub actions: &'static [(ActionKind, Support)],
@@ -36,12 +39,10 @@ const DEVIN_EVENTS: &[(HookEvent, Support)] = &[
 ];
 
 const DEVIN_ACTIONS: &[(ActionKind, Support)] = &[
-    (ActionKind::InjectContext, S), // additionalContext
-    (ActionKind::Block, S),         // decision:block + reason
-    (ActionKind::Approve, S),       // decision:approve
-    (ActionKind::RewriteInput, S),  // updatedInput merge
-    (ActionKind::Spawn, S),
-    (ActionKind::Journal, S),
+    (ActionKind::InjectContext, S),  // additionalContext
+    (ActionKind::Block, S),          // decision:block + reason
+    (ActionKind::Approve, S),        // decision:approve
+    (ActionKind::RewriteInput, S),   // updatedInput merge
     (ActionKind::SystemMessage, S),  // systemMessage channel
     (ActionKind::Followup, Partial), // block+reason is the only channel
 ];
@@ -71,8 +72,6 @@ const CLAUDE_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Block, S),
     (ActionKind::Approve, S),
     (ActionKind::RewriteInput, U),
-    (ActionKind::Spawn, S),
-    (ActionKind::Journal, S),
     (ActionKind::SystemMessage, S), // documented systemMessage field
     (ActionKind::Followup, Partial),
 ];
@@ -95,8 +94,6 @@ const CODEX_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Block, S),         // decision:block contract
     (ActionKind::Approve, U),
     (ActionKind::RewriteInput, U),
-    (ActionKind::Spawn, S),
-    (ActionKind::Journal, S),
     (ActionKind::SystemMessage, S),
     (ActionKind::Followup, Partial),
 ];
@@ -121,8 +118,6 @@ const CURSOR_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Followup, S),      // followup_message / agent_message
     (ActionKind::Block, S),         // continue:false halts the loop
     (ActionKind::RewriteInput, U),
-    (ActionKind::Spawn, S),
-    (ActionKind::Journal, S),
     (ActionKind::SystemMessage, Partial), // no user channel — folds into contexts
 ];
 
@@ -140,8 +135,6 @@ const KIMI_EVENTS: &[(HookEvent, Support)] = &[
 const KIMI_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::InjectContext, U),
     (ActionKind::Block, Partial), // same family as Codex/Claude per contract
-    (ActionKind::Spawn, S),
-    (ActionKind::Journal, S),
     (ActionKind::SystemMessage, S),
     (ActionKind::Followup, Partial),
 ];
@@ -153,13 +146,14 @@ const OPENCODE_EVENTS: &[(HookEvent, Support)] = &[(HookEvent::Idle, S)];
 const OPENCODE_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::Followup, S), // session.prompt API → followup_message field
     (ActionKind::InjectContext, S),
-    (ActionKind::Spawn, S),
 ];
 
 // Antigravity: probed — hooks.json at ~/.gemini/config/hooks.json wires all
 // five events (PreToolUse/PostToolUse grouped under matcher, PreInvocation/
-// PostInvocation/Stop flat). Official spec documents stdin/stdout JSON
-// contracts: PreInvocation→injectSteps.ephemeralMessage, PreToolUse→decision,
+// PostInvocation/Stop flat). Official spec documents per-event stdin/stdout
+// JSON contracts: PreToolUse→decision+reason+overwrite, PostToolUse→{} only,
+// PreInvocation→injectSteps[].ephemeralMessage,
+// PostInvocation→injectSteps[].ephemeralMessage+terminationBehavior,
 // Stop→decision:continue.
 const ANTIGRAVITY_EVENTS: &[(HookEvent, Support)] = &[
     (HookEvent::PreToolUse, S),
@@ -172,8 +166,13 @@ const ANTIGRAVITY_EVENTS: &[(HookEvent, Support)] = &[
 const ANTIGRAVITY_ACTIONS: &[(ActionKind, Support)] = &[
     (ActionKind::InjectContext, S), // injectSteps.ephemeralMessage
     (ActionKind::Block, S),         // PreToolUse decision:deny; Stop decision:continue
-    (ActionKind::Approve, S),       // PreToolUse decision:allow
-    (ActionKind::RewriteInput, S),  // PreToolUse overwrite shallow merge
+    // PreToolUse decision:allow — the ONLY event where an affirmative
+    // approval reaches the wire. On Stop it folds into "stop" (approving the
+    // pending transition; indistinguishable from abstention by contract),
+    // elsewhere it refuses. Authors who need approval to be *visible* must
+    // not rely on this event carrying it.
+    (ActionKind::Approve, S),
+    (ActionKind::RewriteInput, S), // PreToolUse overwrite shallow merge
     (ActionKind::Followup, Partial),
 ];
 

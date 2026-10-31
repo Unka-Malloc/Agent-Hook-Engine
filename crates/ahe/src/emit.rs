@@ -60,12 +60,10 @@ fn used_kinds(r: &Response) -> Vec<ActionKind> {
     if !r.followups.is_empty() {
         kinds.push(ActionKind::Followup);
     }
-    if !r.spawns.is_empty() {
-        kinds.push(ActionKind::Spawn);
-    }
-    if !r.journal.is_empty() {
-        kinds.push(ActionKind::Journal);
-    }
+    // Spawn and Journal are shim-performed intents: the ahe shim executes
+    // them identically on every harness, so they need no wire slot and no
+    // matrix gate — like the engine-internal kinds, a per-host cell would
+    // be dead data.
     if !r.system.is_empty() {
         kinds.push(ActionKind::SystemMessage);
     }
@@ -197,7 +195,12 @@ pub fn emit(harness: &str, ev: HookEvent, rsp: &Response) -> Result<Value, Vec<S
                             o.insert("reason".into(), reason.join("\n").into());
                         }
                     }
-                    _ => {
+                    // Approve approves the pending transition, and on Stop the
+                    // pending action *is* stopping — "stop" is the faithful
+                    // translation of that approval, not a collapse. None is
+                    // abstention, yet the contract offers no abstain slot, so
+                    // the same default is the only honest wire form left.
+                    Decision::Approve | Decision::None => {
                         if !contexts.is_empty() || !rsp.reasons.is_empty() {
                             return Err(vec![
                                 "antigravity Stop carries no context channel without a block decision".into()
@@ -428,6 +431,43 @@ mod tests {
             emit("antigravity", HookEvent::Stop, &Response::default()).unwrap()["decision"],
             "stop"
         );
+    }
+
+    #[test]
+    fn antigravity_stop_approve_is_translation_not_collapse() {
+        // Approving on Stop permits the pending transition — and the pending
+        // action is stopping, so "stop" is its faithful wire form. Refusing
+        // here would reject the program's legitimate approval, not protect a
+        // semantic the contract could never carry.
+        let r = rsp(|r| r.decision = Decision::Approve);
+        let out = emit("antigravity", HookEvent::Stop, &r).unwrap();
+        assert_eq!(out["decision"], "stop");
+        // An approve that also asks for context still refuses: the context
+        // is a real intent and Stop has no channel for it — the approve arm
+        // is no back door around un-carriable fields.
+        let r = rsp(|r| {
+            r.decision = Decision::Approve;
+            r.contexts.push("note".into());
+        });
+        assert!(emit("antigravity", HookEvent::Stop, &r).is_err());
+    }
+
+    #[test]
+    fn antigravity_stop_shim_side_intents_are_not_wire_gated() {
+        // Journal/Spawn are performed by the ahe shim itself, not the wire
+        // contract — a host with no journal channel can still record them.
+        // Before the gate fix this response was refused wholesale: the
+        // approval was neither emitted nor recorded.
+        let r = rsp(|r| {
+            r.decision = Decision::Approve;
+            r.journal.push((
+                "approvals.jsonl".into(),
+                Map::from_iter([("event".into(), Value::from("stop"))]),
+            ));
+            r.spawns.push(vec!["/usr/bin/true".into()]);
+        });
+        let out = emit("antigravity", HookEvent::Stop, &r).unwrap();
+        assert_eq!(out["decision"], "stop");
     }
 
     #[test]

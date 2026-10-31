@@ -181,9 +181,10 @@ Step well-formedness `e; Γ ⊢ s` under fired event `e` — legality relation
 `L ⊆ Event × StepKind` (§6):
 
 ```
-e ∈ {pre_tool_use, pre_shell_exec, pre_mcp_exec}     e = permission_request
-------------------------- S-Rewrite                ------------- S-Approve
-e;Γ ⊢ rewrite o                                      e;Γ ⊢ approve
+                          e ∈ {pre_tool_use, pre_shell_exec, pre_mcp_exec,
+------------------------- S-Rewrite                 permission_request}
+e;Γ ⊢ rewrite o           ------------- S-Approve
+                          e;Γ ⊢ approve
 
 e ∈ block-legal events (§6)
 --------------- S-Block
@@ -322,7 +323,7 @@ the context channel). ∎
 | Step kind | Legal on events |
 |---|---|
 | `rewrite` | pre_tool_use, pre_shell_exec, pre_mcp_exec |
-| `approve` | permission_request |
+| `approve` | permission_request, pre_tool_use, pre_shell_exec, pre_mcp_exec |
 | `block` | pre/post_tool_use(+failure), permission_request, stop(+failure), pre_shell_exec, pre_mcp_exec, post_agent_response |
 | `inject`, `system_message`, `followup`, `journal`, `spawn`, `run`, `checkpoint_set`, `counter_add`, `counter_set`, `list_push`, `when`, `once` | all |
 
