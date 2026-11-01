@@ -56,7 +56,9 @@ pub struct HookDecl {
     /// Tool-name/pattern filter where the dialect supports matchers.
     #[serde(default)]
     pub matcher: Option<String>,
-    /// Seconds the agent should allow the hook to run.
+    /// Seconds the agent should allow the hook to run. Generated code
+    /// observers pass it to the spawned process (`execSync`, milliseconds);
+    /// `None` leaves the runtime default — no engine-imposed bound.
     #[serde(default)]
     pub timeout: Option<u64>,
 }
@@ -154,11 +156,40 @@ pub enum WriteMode {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase", try_from = "ArtifactWire")]
 pub struct Artifact {
+    /// Write target, confined to the home-relative scope — deserialization
+    /// holds the same line [`InstallationPlan::push`] holds at build time.
     pub path: PathBuf,
     pub content: String,
     pub mode: WriteMode,
+}
+
+/// The deserialization boundary for [`Artifact`]: a host loading a plan
+/// from an untrusted file or IPC message gets the same scope check `push`
+/// applies — `..`, absolute, empty and backslash paths never materialize
+/// into an `Artifact` at all.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ArtifactWire {
+    path: PathBuf,
+    content: String,
+    mode: WriteMode,
+}
+
+impl TryFrom<ArtifactWire> for Artifact {
+    type Error = &'static str;
+
+    fn try_from(wire: ArtifactWire) -> Result<Self, Self::Error> {
+        match wire.path.to_str() {
+            Some(raw) if scope_relative(raw) => Ok(Artifact {
+                path: wire.path,
+                content: wire.content,
+                mode: wire.mode,
+            }),
+            _ => Err("artifact path escapes its declared scope"),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -397,6 +428,22 @@ pub fn adapt(surface: &HookSurface, hooks: &[HookDecl]) -> InstallationPlan {
     plan
 }
 
+/// `execSync` options for one generated observer. The declared bound
+/// ([`HookDecl::timeout`], seconds) is carried into the spawn in
+/// milliseconds — a hung or slow observer is killed and reported instead
+/// of stalling the host's event loop. `None` leaves Node's default
+/// (`timeout: 0`, unbounded): the declaration carries no bound, so the
+/// generated code imposes none.
+fn observer_options(hook: &HookDecl) -> String {
+    match hook.timeout {
+        Some(seconds) => format!(
+            "{{ stdio: 'pipe', timeout: {} }}",
+            seconds.saturating_mul(1000)
+        ),
+        None => "{ stdio: 'pipe' }".to_owned(),
+    }
+}
+
 /// Pi extension body: one `pi.on` observer per admitted hook. Observers
 /// never veto — a failed command reports the event, command and reason to
 /// the host log (`console.error`, the extension host's diagnostic channel)
@@ -405,8 +452,9 @@ fn pi_extension_body(emitted: &[(&str, &HookDecl)]) -> String {
     let mut body = String::from("// @a4aa-managed\nexport default function (pi) {\n");
     for (event, hook) in emitted {
         let command = serde_json::to_string(&hook.command).unwrap_or_default();
+        let options = observer_options(hook);
         body.push_str(&format!(
-            "  pi.on('{event}', async () => {{ const {{ execSync }} = await import('node:child_process'); try {{ execSync({command}, {{ stdio: 'pipe' }}) }} catch (error) {{ console.error('[a4aa] observer hook failed', {{ event: '{event}', command: {command}, reason: String(error) }}) }} }})\n"
+            "  pi.on('{event}', async () => {{ const {{ execSync }} = await import('node:child_process'); try {{ execSync({command}, {options}) }} catch (error) {{ console.error('[a4aa] observer hook failed', {{ event: '{event}', command: {command}, reason: String(error) }}) }} }})\n"
         ));
     }
     body.push_str("}\n");
@@ -421,8 +469,9 @@ fn opencode_plugin_body(emitted: &[(&str, &HookDecl)]) -> String {
     );
     for (event, hook) in emitted {
         let command = serde_json::to_string(&hook.command).unwrap_or_default();
+        let options = observer_options(hook);
         body.push_str(&format!(
-            "    if (event.type === '{event}') {{ const {{ execSync }} = await import('node:child_process'); try {{ execSync({command}) }} catch (error) {{ console.error('[a4aa] observer hook failed', {{ event: '{event}', command: {command}, reason: String(error) }}) }} }}\n"
+            "    if (event.type === '{event}') {{ const {{ execSync }} = await import('node:child_process'); try {{ execSync({command}, {options}) }} catch (error) {{ console.error('[a4aa] observer hook failed', {{ event: '{event}', command: {command}, reason: String(error) }}) }} }}\n"
         ));
     }
     body.push_str("  },\n})\n");

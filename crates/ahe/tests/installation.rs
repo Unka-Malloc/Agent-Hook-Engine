@@ -409,6 +409,51 @@ fn generated_observers_report_failures_to_the_host_log_without_vetoing() {
 }
 
 #[test]
+fn generated_observers_carry_the_declared_timeout_into_exec() {
+    for harness in [&harnesses::PI, &harnesses::OPENCODE, &harnesses::KILO_CODE] {
+        let plan = adapt(
+            &harness.surface,
+            &[
+                HookDecl {
+                    intent: HookIntent::Notify,
+                    timeout: Some(30),
+                    ..hook(HookEvent::SessionStart, "bounded.sh")
+                },
+                HookDecl {
+                    intent: HookIntent::Notify,
+                    ..hook(HookEvent::SessionStart, "unbounded.sh")
+                },
+            ],
+        );
+        let artifact = plan
+            .artifacts
+            .iter()
+            .find(|a| a.content.contains("bounded.sh"))
+            .expect("observer artifact");
+        // The declared bound reaches the spawned process in milliseconds —
+        // a hung observer is killed and reported instead of stalling the
+        // host's event loop.
+        assert!(
+            artifact
+                .content
+                .contains(r#"execSync("bounded.sh", { stdio: 'pipe', timeout: 30000 })"#),
+            "{}",
+            artifact.content
+        );
+        // No declared bound: no timeout key — the declaration carries no
+        // limit, so the generated code imposes none (Node's unbounded
+        // default).
+        assert!(
+            artifact
+                .content
+                .contains(r#"execSync("unbounded.sh", { stdio: 'pipe' })"#),
+            "{}",
+            artifact.content
+        );
+    }
+}
+
+#[test]
 fn extension_admission_reports_identical_outcomes_across_rendering_paths() {
     // Mixed intents and events: admission outcomes and their order are one
     // dialect-neutral policy; only the rendering format branches.
@@ -512,6 +557,45 @@ fn a_traversing_descriptor_path_is_refused_not_written() {
         );
         assert!(plan.artifacts.is_empty(), "{file}");
     }
+}
+
+#[test]
+fn a_deserialized_artifact_rejects_paths_escaping_the_scope() {
+    // A host loading a plan from an untrusted file or IPC gets the same
+    // line `push` holds at build time: `..`, absolute, backslash and empty
+    // paths fail deserialization instead of being written outside the
+    // home-relative scope.
+    for path in [
+        "../outside.json",
+        "nested/../../outside.json",
+        "/abs/hooks.json",
+        ".x\\hooks.json",
+        "",
+    ] {
+        let json = serde_json::json!({
+            "path": path,
+            "content": "x",
+            "mode": {"kind": "create"},
+        });
+        assert!(serde_json::from_value::<Artifact>(json).is_err(), "{path}");
+    }
+    // Nested paths inside the scope still load.
+    let artifact: Artifact = serde_json::from_value(serde_json::json!({
+        "path": ".claude/nested/settings.json",
+        "content": "x",
+        "mode": {"kind": "create"},
+    }))
+    .unwrap();
+    assert_eq!(
+        artifact.path,
+        std::path::Path::new(".claude/nested/settings.json")
+    );
+    // And a plan carrying an escaping artifact is refused as a whole.
+    let plan = serde_json::json!({
+        "artifacts": [{"path": "../evil.json", "content": "x", "mode": {"kind": "create"}}],
+        "report": [],
+    });
+    assert!(serde_json::from_value::<InstallationPlan>(plan).is_err());
 }
 
 #[test]
