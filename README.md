@@ -16,8 +16,7 @@ AHE owns hook declarations, installation planning and hook DSL lowering.
 A4AA consumes that installation contract and harness catalog while retaining
 Agent session driving and callbacks. The host writes returned installation
 artifacts, executes Agent sessions and applies the capabilities its harness
-supports. AOR owns workflow gates, not hook adaptation. Probator and GitVault
-are optional local tools, not AHE runtime or build dependencies.
+supports.
 
 Consume AHE through the Rust SDK or the per-event `ahe run` CLI; both share
 the runtime pipeline. The CLI persists session state but is not a resident
