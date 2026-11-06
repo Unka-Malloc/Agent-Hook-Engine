@@ -1,11 +1,12 @@
 [package]
 name = "ahe"
 description = "Agent Hook Engine — one hook DSL evaluated by a common runtime and lowered onto every agent harness's native hook surface."
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 rust-version = "1.85"
 license = "Apache-2.0"
 repository = "https://github.com/Unka-Malloc/Agent-Hook-Engine"
+readme = "../../README.md"
 keywords = ["agent", "hooks", "dsl", "lifecycle", "cli"]
 categories = ["command-line-utilities", "parser-implementations"]
 
