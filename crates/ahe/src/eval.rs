@@ -127,7 +127,7 @@ fn ord(l: &Value, r: &Value, v: &mut Vec<String>, what: &str) -> Option<std::cmp
     match (l, r) {
         (Value::Number(a), Value::Number(b)) => a
             .as_f64()
-            .and_then(|x| b.as_f64().map(|y| (x, y)))
+            .zip(b.as_f64())
             .and_then(|(x, y)| x.partial_cmp(&y)),
         (Value::String(a), Value::String(b)) => Some(a.cmp(b)),
         _ => {
@@ -815,25 +815,54 @@ mod tests {
 
     #[test]
     fn run_child_merges_contract() {
+        #[cfg(unix)]
+        let argv = vec![
+            "/bin/sh".into(),
+            "-c".into(),
+            "printf '{\"decision\":\"block\",\"reason\":\"no\"}'".into(),
+        ];
+        #[cfg(windows)]
+        let argv = {
+            // cmd /c cannot carry quoted JSON through Rust's argv quoting —
+            // the contract text lives in a script file instead, which cmd
+            // executes verbatim.
+            let script =
+                std::env::temp_dir().join(format!("ahe-contract-{}.cmd", std::process::id()));
+            std::fs::write(
+                &script,
+                "@echo off\r\necho {\"decision\":\"block\",\"reason\":\"no\"}\r\n",
+            )
+            .unwrap();
+            vec![
+                "cmd".into(),
+                "/c".into(),
+                script.to_string_lossy().into_owned().into(),
+            ]
+        };
         let p = prog(vec![Step::Run {
-            argv: vec![
-                "/bin/sh".into(),
-                "-c".into(),
-                "printf '{\"decision\":\"block\",\"reason\":\"no\"}'".into(),
-            ],
+            argv,
             timeout_ms: Some(5_000),
             capture: None,
         }]);
         let mut s = State::default();
         let r = run_program(&p, HookEvent::Stop, &json!({}), &mut s);
-        assert_eq!(r.decision, Decision::Block);
+        assert_eq!(
+            r.decision,
+            Decision::Block,
+            "violations: {:?}",
+            r.violations
+        );
         assert_eq!(r.reasons, ["no"]);
     }
 
     #[test]
     fn run_child_failure_is_isolated() {
+        #[cfg(unix)]
+        let argv = vec!["/bin/sh".into(), "-c".into(), "exit 3".into()];
+        #[cfg(windows)]
+        let argv = vec!["cmd".into(), "/c".into(), "exit 3".into()];
         let p = prog(vec![Step::Run {
-            argv: vec!["/bin/sh".into(), "-c".into(), "exit 3".into()],
+            argv,
             timeout_ms: Some(5_000),
             capture: None,
         }]);
